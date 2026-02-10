@@ -1,0 +1,80 @@
+:root {
+  color-scheme: light;
+  --font-ui: "Baloo 2", "Avenir Next Rounded", "Hiragino Maru Gothic ProN", "Trebuchet MS",
+    "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "IBM Plex Mono", "SFMono-Regular", "Menlo", monospace;
+
+  --bg-top: #fffdf8;
+  --bg-mid: #ffe8d2;
+  --bg-low: #ffd2b6;
+  --shell: #fff6ee;
+  --panel: #fffdfb;
+  --panel-raised: #fffaf6;
+  --panel-pressed: #faebe0;
+
+  --ink: #332118;
+  --ink-soft: #705647;
+  --line: #efc8aa;
+  --line-strong: #d8986f;
+  --line-deep: #ad6f45;
+
+  --brand-red: #e5483f;
+  --brand-red-deep: #c7332b;
+  --brand-blue: #2479d4;
+  --brand-blue-soft: #d9ecff;
+  --brand-green: #2f9550;
+  --brand-yellow: #ffba24;
+
+  --danger: #b32b2b;
+  --danger-bg: #ffe5e5;
+
+  --radius-xl: 24px;
+  --radius-lg: 16px;
+  --radius-md: 12px;
+  --radius-sm: 9px;
+
+  --shadow-shell: 0 22px 44px rgba(107, 61, 38, 0.16);
+  --shadow-panel: 0 9px 18px rgba(128, 79, 41, 0.14);
+  --shadow-button: 0 4px 0 var(--brand-red-deep), 0 8px 12px rgba(150, 52, 43, 0.28);
+  --focus-ring: 0 0 0 3px rgba(36, 121, 212, 0.28);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 9% 10%, rgba(255, 255, 255, 0.96) 0%, rgba(255, 255, 255, 0) 30%),
+    radial-gradient(circle at 88% 4%, rgba(255, 220, 193, 0.9) 0%, rgba(255, 220, 193, 0) 34%),
+    linear-gradient(165deg, var(--bg-top) 0%, var(--bg-mid) 52%, var(--bg-low) 100%);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(160, 103, 59, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(160, 103, 59, 0.06) 1px, transparent 1px);
+  background-size: 20px 20px;
+  opacity: 0.33;
+  pointer-events: none;
+  z-index: -1;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
