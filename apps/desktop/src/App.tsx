@@ -622,11 +622,15 @@ function App() {
   const previewImageSrc = toRenderableImage(previewImagePath);
   const showExportChromaToggle = !!previewChild && previewChild.mode !== "sprite";
   const exportFileName = React.useMemo(() => {
-    const baseName = previewChild?.name
+    const projectName = selectedProject?.name
+      ? toSafeExportName(selectedProject.name)
+      : "";
+    const childName = previewChild?.name
       ? toSafeExportName(previewChild.name)
       : "sprite-export";
-    return `${baseName}.png`;
-  }, [previewChild?.name]);
+    const combinedName = projectName ? `${projectName}-${childName}` : childName;
+    return `${combinedName}.png`;
+  }, [selectedProject?.name, previewChild?.name]);
   const previewRows = Math.max(1, previewChild?.inputs.rows ?? 1);
   const previewCols = Math.max(1, previewChild?.inputs.cols ?? 1);
   const previewIsSpriteSheet =
@@ -682,6 +686,9 @@ function App() {
     }
 
     setIsExporting(true);
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => resolve());
+    });
     try {
       const finalPath = await exportImageToPath(
         previewImagePath,
@@ -1324,7 +1331,7 @@ function App() {
                   )}
                 </section>
 
-                <div className="action-row">
+                <div className="action-row export-action-row">
                   {showExportChromaToggle && (
                     <label className="toggle-field">
                       <span>Remove 0x00FF00 background</span>
@@ -1348,6 +1355,15 @@ function App() {
                     {isExporting ? "Saving..." : "Save As"}
                   </button>
                 </div>
+
+                {isExporting && (
+                  <p aria-live="polite" className="export-saving-indicator" role="status">
+                    <span aria-hidden="true" className="project-spinner" />
+                    {showExportChromaToggle && removeExportChromakey
+                      ? "Saving and removing background..."
+                      : "Saving export..."}
+                  </p>
+                )}
 
                 {exportError && <p className="error-banner">{exportError}</p>}
                 {exportResult && <p className="muted">{exportResult}</p>}

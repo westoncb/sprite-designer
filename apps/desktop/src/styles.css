@@ -581,6 +581,12 @@
   justify-content: flex-start;
 }
 
+.export-action-row {
+  align-items: center;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
 .primary-button {
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-sm);
@@ -609,6 +615,15 @@
   opacity: 0.55;
   cursor: not-allowed;
   box-shadow: none;
+}
+
+.export-saving-indicator {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.48rem;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
 }
 
 .error-banner {

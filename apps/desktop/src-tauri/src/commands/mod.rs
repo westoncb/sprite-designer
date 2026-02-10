@@ -48,18 +48,26 @@ pub fn delete_project(app: AppHandle, project_id: String) -> Result<(), String> 
 }
 
 #[tauri::command]
-pub fn export_image_to_path(
+pub async fn export_image_to_path(
     source_image_path: String,
     destination_path: String,
     remove_chromakey_background: bool,
 ) -> Result<String, String> {
-    wrap_cmd(|| {
-        storage::export_image_to_path(
-            Path::new(&source_image_path),
-            Path::new(&destination_path),
-            remove_chromakey_background,
-        )
+    wrap_cmd_async(async move {
+        let source_path = std::path::PathBuf::from(source_image_path);
+        let destination_path = std::path::PathBuf::from(destination_path);
+
+        tauri::async_runtime::spawn_blocking(move || {
+            storage::export_image_to_path(
+                &source_path,
+                &destination_path,
+                remove_chromakey_background,
+            )
+        })
+        .await
+        .map_err(|error| AppError::msg(format!("failed to join export task: {error}")))?
     })
+    .await
 }
 
 #[tauri::command]
