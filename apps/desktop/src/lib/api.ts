@@ -17,3 +17,13 @@ export async function generateImage(req: GenerateRequest): Promise<ChildResult> 
 export async function editImage(req: EditRequest): Promise<ChildResult> {
   return invoke<ChildResult>("edit_image", { req });
 }
+
+export async function exportImageToPath(
+  sourceImagePath: string,
+  destinationPath: string,
+): Promise<string> {
+  return invoke<string>("export_image_to_path", {
+    sourceImagePath,
+    destinationPath,
+  });
+}

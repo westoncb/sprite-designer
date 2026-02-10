@@ -252,6 +252,27 @@ pub fn read_image_path_as_data_url(path: &Path) -> AppResult<String> {
     Ok(format!("data:{mime};base64,{}", STANDARD.encode(bytes)))
 }
 
+pub fn export_image_to_path(source_image_path: &Path, destination_path: &Path) -> AppResult<String> {
+    if !source_image_path.exists() {
+        return Err(AppError::msg(format!(
+            "source image path not found: {}",
+            source_image_path.display()
+        )));
+    }
+
+    let mut output_path = destination_path.to_path_buf();
+    if output_path.extension().is_none() {
+        output_path.set_extension("png");
+    }
+
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    fs::copy(source_image_path, &output_path)?;
+    Ok(output_path.to_string_lossy().to_string())
+}
+
 fn ensure_project_dirs(app: &AppHandle, project_id: &str) -> AppResult<()> {
     fs::create_dir_all(children_dir(app, project_id)?)?;
     fs::create_dir_all(images_dir(app, project_id)?)?;

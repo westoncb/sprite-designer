@@ -21,12 +21,14 @@ pub fn run() {
     };
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             commands::list_projects,
             commands::get_project,
             commands::create_project,
             commands::delete_project,
+            commands::export_image_to_path,
             commands::generate_image,
             commands::edit_image,
         ])

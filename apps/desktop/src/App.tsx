@@ -1,7 +1,14 @@
 import React from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
 import type { Child, Project, Resolution } from "@sprite-designer/shared/types";
-import { editImage, generateImage, getProject, listProjects } from "./lib/api";
+import {
+  editImage,
+  exportImageToPath,
+  generateImage,
+  getProject,
+  listProjects,
+} from "./lib/api";
 import { SpriteSheetPlayer } from "./components/SpriteSheetPlayer";
 import {
   asErrorMessage,
@@ -54,6 +61,20 @@ function toRenderableImage(path?: string): string | undefined {
   } catch {
     return path;
   }
+}
+
+function toSafeExportName(value: string): string {
+  const trimmed = value.trim();
+  const normalized = trimmed
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  if (!normalized) {
+    return "sprite-export";
+  }
+
+  return normalized;
 }
 
 function upsertProject(existing: Project[], incoming: Project): Project[] {
@@ -210,6 +231,9 @@ function App() {
   );
   const [generateError, setGenerateError] = React.useState<string | null>(null);
   const [editError, setEditError] = React.useState<string | null>(null);
+  const [isExporting, setIsExporting] = React.useState(false);
+  const [exportError, setExportError] = React.useState<string | null>(null);
+  const [exportResult, setExportResult] = React.useState<string | null>(null);
   const [isSeedImageExpanded, setIsSeedImageExpanded] = React.useState(false);
   const [previewMode, setPreviewMode] = React.useState<"image" | "animation">(
     "image",
@@ -370,6 +394,8 @@ function App() {
     setSelectedChildId(NEW_ITEM);
     setGenerateError(null);
     setEditError(null);
+    setExportError(null);
+    setExportResult(null);
   };
 
   const handleSelectProject = (projectId: string) => {
@@ -377,6 +403,8 @@ function App() {
     setSelectedChildId(null);
     setGenerateError(null);
     setEditError(null);
+    setExportError(null);
+    setExportResult(null);
   };
 
   const handleSelectChild = (projectId: string, childId: string) => {
@@ -384,6 +412,8 @@ function App() {
     setSelectedChildId(childId);
     setGenerateError(null);
     setEditError(null);
+    setExportError(null);
+    setExportResult(null);
   };
 
   const patchGenerateDraft = (patch: Partial<GenerateDraft>) => {
@@ -589,6 +619,12 @@ function App() {
     previewChild?.outputs.primaryImagePath ??
     previewChild?.outputs.imagePaths[0];
   const previewImageSrc = toRenderableImage(previewImagePath);
+  const exportFileName = React.useMemo(() => {
+    const baseName = previewChild?.name
+      ? toSafeExportName(previewChild.name)
+      : "sprite-export";
+    return `${baseName}.png`;
+  }, [previewChild?.name]);
   const previewRows = Math.max(1, previewChild?.inputs.rows ?? 1);
   const previewCols = Math.max(1, previewChild?.inputs.cols ?? 1);
   const previewIsSpriteSheet =
@@ -618,6 +654,41 @@ function App() {
       setPreviewMode("image");
     }
   }, [previewIsSpriteSheet, previewMode]);
+
+  React.useEffect(() => {
+    setExportError(null);
+    setExportResult(null);
+  }, [previewImagePath]);
+
+  const handleSaveAsExport = React.useCallback(async () => {
+    if (!previewImagePath) {
+      setExportError("No output image available to export.");
+      setExportResult(null);
+      return;
+    }
+
+    setExportError(null);
+    setExportResult(null);
+
+    const destinationPath = await save({
+      defaultPath: exportFileName,
+      filters: [{ name: "PNG Image", extensions: ["png"] }],
+    });
+
+    if (!destinationPath) {
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const finalPath = await exportImageToPath(previewImagePath, destinationPath);
+      setExportResult(`Saved to ${finalPath}`);
+    } catch (error) {
+      setExportError(asErrorMessage(error));
+    } finally {
+      setIsExporting(false);
+    }
+  }, [previewImagePath, exportFileName]);
 
   return (
     <div className="app-shell">
@@ -683,7 +754,7 @@ function App() {
 
       <main className="main-panel">
         <header className="tabs">
-          {(["generate", "edit", "preview"] as AppTab[]).map((tab) => (
+          {(["generate", "edit", "preview", "export"] as AppTab[]).map((tab) => (
             <button
               className={`tab ${activeTab === tab ? "tab-active" : ""}`}
               key={tab}
@@ -1214,6 +1285,52 @@ function App() {
                     {previewRows * previewCols} frames
                   </p>
                 )}
+              </>
+            )}
+          </section>
+        )}
+
+        {activeTab === "export" && (
+          <section className="panel-content preview-panel">
+            {!previewChild && (
+              <p className="muted">Select a project child to export output.</p>
+            )}
+
+            {previewChild && (
+              <>
+                <div className="preview-toolbar">
+                  <p className="muted">
+                    {previewChild.name} ({previewChild.type})
+                  </p>
+                </div>
+
+                <section className="preview-card preview-stage">
+                  {previewImageSrc ? (
+                    <img
+                      alt={`${previewChild.name} export preview`}
+                      className="preview-large-image"
+                      src={previewImageSrc}
+                    />
+                  ) : (
+                    <div className="placeholder">
+                      No output image saved for this child.
+                    </div>
+                  )}
+                </section>
+
+                <div className="action-row">
+                  <button
+                    className="primary-button"
+                    disabled={!previewImagePath || isExporting}
+                    onClick={handleSaveAsExport}
+                    type="button"
+                  >
+                    {isExporting ? "Saving..." : "Save As"}
+                  </button>
+                </div>
+
+                {exportError && <p className="error-banner">{exportError}</p>}
+                {exportResult && <p className="muted">{exportResult}</p>}
               </>
             )}
           </section>

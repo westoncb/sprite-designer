@@ -48,6 +48,19 @@ pub fn delete_project(app: AppHandle, project_id: String) -> Result<(), String> 
 }
 
 #[tauri::command]
+pub fn export_image_to_path(
+    source_image_path: String,
+    destination_path: String,
+) -> Result<String, String> {
+    wrap_cmd(|| {
+        storage::export_image_to_path(
+            Path::new(&source_image_path),
+            Path::new(&destination_path),
+        )
+    })
+}
+
+#[tauri::command]
 pub async fn generate_image(
     app: AppHandle,
     state: State<'_, AppState>,

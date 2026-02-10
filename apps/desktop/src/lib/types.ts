@@ -1,6 +1,6 @@
 import type { Child, Project, ProjectSummary, Resolution } from "@sprite-designer/shared/types";
 
-export type AppTab = "generate" | "edit" | "preview";
+export type AppTab = "generate" | "edit" | "preview" | "export";
 export type SelectionChildId = string | null | "<new>";
 
 export interface GenerateDraft {
