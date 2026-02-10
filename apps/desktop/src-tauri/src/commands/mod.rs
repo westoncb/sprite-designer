@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use chrono::Utc;
+use image::GenericImageView;
 use tauri::{AppHandle, State};
 use uuid::Uuid;
 
@@ -98,9 +99,11 @@ pub async fn generate_image(
             })
             .await?;
 
+        let chosen_data_urls =
+            choose_best_images_for_resolution(&openrouter_response.image_data_urls, req.resolution);
         let child_id = Uuid::new_v4().to_string();
         let mut image_paths = Vec::new();
-        for (index, data_url) in openrouter_response.image_data_urls.iter().enumerate() {
+        for (index, data_url) in chosen_data_urls.iter().enumerate() {
             let image_path =
                 storage::write_output_image(&app, &project_record.id, &child_id, index, data_url)?;
             image_paths.push(image_path);
@@ -187,11 +190,16 @@ pub async fn edit_image(
             })
             .await?;
 
+        let chosen_resolution = req.resolution.unwrap_or(Resolution::OneK);
+        let chosen_data_urls = choose_best_images_for_resolution(
+            &openrouter_response.image_data_urls,
+            chosen_resolution,
+        );
         let child_id = Uuid::new_v4().to_string();
         let child_name = storage::next_child_name(&app, &project_record.id, ChildType::Edit)?;
 
         let mut image_paths = Vec::new();
-        for (index, data_url) in openrouter_response.image_data_urls.iter().enumerate() {
+        for (index, data_url) in chosen_data_urls.iter().enumerate() {
             let image_path =
                 storage::write_output_image(&app, &project_record.id, &child_id, index, data_url)?;
             image_paths.push(image_path);
@@ -306,4 +314,58 @@ where
     F: std::future::Future<Output = AppResult<T>>,
 {
     f.await.map_err(|error| error.to_string())
+}
+
+fn choose_best_images_for_resolution(data_urls: &[String], resolution: Resolution) -> Vec<String> {
+    if data_urls.len() <= 1 {
+        return data_urls.to_vec();
+    }
+
+    let target_long_edge = resolution_long_edge(resolution);
+    let mut ranked: Vec<(usize, u32, u32, u64)> = Vec::new();
+
+    for (index, data_url) in data_urls.iter().enumerate() {
+        let parsed = match storage::parse_data_url(data_url) {
+            Ok(parsed) => parsed,
+            Err(_) => continue,
+        };
+        let image = match image::load_from_memory(&parsed.bytes) {
+            Ok(image) => image,
+            Err(_) => continue,
+        };
+        let (width, height) = image.dimensions();
+        let long_edge = width.max(height);
+        let area = width as u64 * height as u64;
+        ranked.push((index, width, height, area));
+        if long_edge == target_long_edge {
+            return vec![data_url.clone()];
+        }
+    }
+
+    if ranked.is_empty() {
+        return vec![data_urls[0].clone()];
+    }
+
+    ranked.sort_by(|a, b| {
+        let a_long_edge = a.1.max(a.2);
+        let b_long_edge = b.1.max(b.2);
+        let a_distance = a_long_edge.abs_diff(target_long_edge);
+        let b_distance = b_long_edge.abs_diff(target_long_edge);
+
+        a_distance
+            .cmp(&b_distance)
+            .then_with(|| b.3.cmp(&a.3))
+            .then_with(|| a.0.cmp(&b.0))
+    });
+
+    let best = ranked[0].0;
+    vec![data_urls[best].clone()]
+}
+
+fn resolution_long_edge(resolution: Resolution) -> u32 {
+    match resolution {
+        Resolution::OneK => 1024,
+        Resolution::TwoK => 2048,
+        Resolution::FourK => 4096,
+    }
 }
