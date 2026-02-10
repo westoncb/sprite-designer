@@ -29,10 +29,18 @@ export interface OpenRouterSnapshot {
   payload: Record<string, unknown>;
 }
 
+export interface CompletionMetadata {
+  finishReason?: string;
+  refusal?: string;
+  reasoning?: string;
+  reasoningDetails?: string;
+}
+
 export interface ChildOutputs {
   text?: string;
   imagePaths: string[];
   primaryImagePath?: string;
+  completion?: CompletionMetadata;
 }
 
 export interface Child {

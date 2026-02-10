@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 
 use crate::{
     error::{AppError, AppResult},
-    models::Resolution,
+    models::{CompletionMetadata, Resolution},
 };
 
 const OPENROUTER_ENDPOINT: &str = "https://openrouter.ai/api/v1/chat/completions";
@@ -69,6 +69,7 @@ pub struct OpenRouterResponse {
     pub text: Option<String>,
     pub image_data_urls: Vec<String>,
     pub sanitized_payload: Value,
+    pub completion: Option<CompletionMetadata>,
 }
 
 impl OpenRouterClient {
@@ -122,12 +123,19 @@ impl OpenRouterClient {
         }
 
         let text = extract_text(&response_json);
+        let completion = extract_completion_metadata(&response_json);
+        let model = response_json
+            .get("model")
+            .and_then(Value::as_str)
+            .unwrap_or(&self.config.model)
+            .to_string();
 
         Ok(OpenRouterResponse {
-            model: self.config.model.clone(),
+            model,
             text,
             image_data_urls,
             sanitized_payload,
+            completion,
         })
     }
 }
@@ -303,6 +311,58 @@ fn extract_image_data_urls(response: &Value) -> Vec<String> {
     }
 
     images
+}
+
+fn extract_completion_metadata(response: &Value) -> Option<CompletionMetadata> {
+    let finish_reason = response
+        .pointer("/choices/0/finish_reason")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let message = response.pointer("/choices/0/message");
+
+    let refusal = message
+        .and_then(|value| value.get("refusal"))
+        .and_then(to_string_value);
+    let reasoning = message
+        .and_then(|value| value.get("reasoning"))
+        .and_then(to_string_value);
+    let reasoning_details = message
+        .and_then(|value| {
+            value
+                .get("reasoning_details")
+                .or_else(|| value.get("reasoningDetails"))
+        })
+        .and_then(to_string_value);
+
+    if finish_reason.is_none()
+        && refusal.is_none()
+        && reasoning.is_none()
+        && reasoning_details.is_none()
+    {
+        return None;
+    }
+
+    Some(CompletionMetadata {
+        finish_reason,
+        refusal,
+        reasoning,
+        reasoning_details,
+    })
+}
+
+fn to_string_value(value: &Value) -> Option<String> {
+    match value {
+        Value::Null => None,
+        Value::String(text) => {
+            let trimmed = text.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        }
+        _ => serde_json::to_string_pretty(value).ok(),
+    }
 }
 
 fn sanitize_payload(payload: Value) -> Value {

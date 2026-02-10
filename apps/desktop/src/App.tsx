@@ -26,8 +26,7 @@ function createDefaultGenerateDraft(overrides?: Partial<GenerateDraft>): Generat
     cameraAngle: "",
     promptText: "",
     resolution: "1K",
-    imagePriorDataUrl: createSpriteGridDataUrl(4, 4, "1K"),
-    imagePriorSource: "grid"
+    imagePriorDataUrl: createSpriteGridDataUrl(4, 4, "1K")
   };
 
   return {
@@ -69,17 +68,8 @@ function resolveGenerateDraft(project: Project, selectedChild?: Child): Generate
   const resolution = safeResolution(generateSource.inputs.resolution);
 
   let imagePriorDataUrl = generateSource.inputs.imagePriorDataUrl;
-  let imagePriorSource: GenerateDraft["imagePriorSource"] = null;
-
-  if (spriteMode) {
-    if (!imagePriorDataUrl) {
-      imagePriorDataUrl = createSpriteGridDataUrl(rows, cols, resolution);
-      imagePriorSource = "grid";
-    } else {
-      imagePriorSource = "upload";
-    }
-  } else if (imagePriorDataUrl) {
-    imagePriorSource = "upload";
+  if (spriteMode && !imagePriorDataUrl) {
+    imagePriorDataUrl = createSpriteGridDataUrl(rows, cols, resolution);
   }
 
   return {
@@ -92,8 +82,7 @@ function resolveGenerateDraft(project: Project, selectedChild?: Child): Generate
     cameraAngle: generateSource.inputs.cameraAngle ?? "",
     promptText: generateSource.inputs.promptText ?? "",
     resolution,
-    imagePriorDataUrl,
-    imagePriorSource
+    imagePriorDataUrl
   };
 }
 
@@ -136,7 +125,6 @@ function App() {
   const [pendingAction, setPendingAction] = React.useState<"generate" | "edit" | null>(null);
   const [generateError, setGenerateError] = React.useState<string | null>(null);
   const [editError, setEditError] = React.useState<string | null>(null);
-
   const imagePriorInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const selectedProject = React.useMemo(
@@ -268,8 +256,7 @@ function App() {
 
       return {
         ...next,
-        imagePriorDataUrl: createSpriteGridDataUrl(next.rows, next.cols, next.resolution),
-        imagePriorSource: "grid"
+        imagePriorDataUrl: createSpriteGridDataUrl(next.rows, next.cols, next.resolution)
       };
     });
   };
@@ -283,8 +270,7 @@ function App() {
     setDraftGenerateForm((previous) => ({
       ...previous,
       spriteMode: false,
-      imagePriorDataUrl: undefined,
-      imagePriorSource: null
+      imagePriorDataUrl: undefined
     }));
   };
 
@@ -304,8 +290,7 @@ function App() {
       const dataUrl = await readFileAsDataUrl(file);
       setDraftGenerateForm((previous) => ({
         ...previous,
-        imagePriorDataUrl: dataUrl,
-        imagePriorSource: "upload"
+        imagePriorDataUrl: dataUrl
       }));
       setGenerateError(null);
     } catch (error) {
@@ -466,7 +451,7 @@ function App() {
         {activeTab === "generate" && (
           <section className="panel-content">
             <div className="form-row header-row">
-              <label className="field grow">
+              <label className="field field-inline grow">
                 <span>Name</span>
                 <input
                   onChange={(event) => patchGenerateDraft({ name: event.target.value })}
@@ -488,10 +473,11 @@ function App() {
 
             {draftGenerateForm.spriteMode ? (
               <>
-                <div className="form-row grid-fields">
-                  <label className="field">
+                <div className="form-row grid-fields compact-grid-fields">
+                  <label className="field field-inline compact-field number-field">
                     <span>Rows</span>
                     <input
+                      className="number-input"
                       min={1}
                       onChange={(event) =>
                         updateSpriteGrid({ rows: Math.max(1, Math.floor(Number(event.target.value) || 1)) })
@@ -500,9 +486,10 @@ function App() {
                       value={draftGenerateForm.rows}
                     />
                   </label>
-                  <label className="field">
+                  <label className="field field-inline compact-field number-field">
                     <span>Cols</span>
                     <input
+                      className="number-input"
                       min={1}
                       onChange={(event) =>
                         updateSpriteGrid({ cols: Math.max(1, Math.floor(Number(event.target.value) || 1)) })
@@ -511,15 +498,7 @@ function App() {
                       value={draftGenerateForm.cols}
                     />
                   </label>
-                  <label className="field">
-                    <span>Style</span>
-                    <input
-                      onChange={(event) => patchGenerateDraft({ style: event.target.value })}
-                      type="text"
-                      value={draftGenerateForm.style}
-                    />
-                  </label>
-                  <label className="field">
+                  <label className="field field-inline">
                     <span>Camera angle</span>
                     <input
                       onChange={(event) => patchGenerateDraft({ cameraAngle: event.target.value })}
@@ -527,7 +506,7 @@ function App() {
                       value={draftGenerateForm.cameraAngle}
                     />
                   </label>
-                  <label className="field">
+                  <label className="field field-inline compact-field">
                     <span>Resolution</span>
                     <select
                       onChange={(event) =>
@@ -543,11 +522,19 @@ function App() {
                     </select>
                   </label>
                 </div>
-                <label className="field">
+                <label className="field field-inline grow">
+                  <span>Style</span>
+                  <input
+                    onChange={(event) => patchGenerateDraft({ style: event.target.value })}
+                    type="text"
+                    value={draftGenerateForm.style}
+                  />
+                </label>
+                <label className="field field-inline">
                   <span>Object description</span>
                   <textarea
                     onChange={(event) => patchGenerateDraft({ objectDescription: event.target.value })}
-                    rows={3}
+                    rows={2}
                     value={draftGenerateForm.objectDescription}
                   />
                 </label>
@@ -581,37 +568,6 @@ function App() {
             )}
 
             <section className="image-prior-panel">
-              <div className="panel-label-row">
-                <h2>Image prior</h2>
-                <div className="panel-actions">
-                  <button
-                    onClick={() => imagePriorInputRef.current?.click()}
-                    type="button"
-                    className="ghost-button"
-                  >
-                    Upload
-                  </button>
-                  {draftGenerateForm.spriteMode && (
-                    <button
-                      className="ghost-button"
-                      onClick={() => updateSpriteGrid({})}
-                      type="button"
-                    >
-                      Reset grid
-                    </button>
-                  )}
-                  {!draftGenerateForm.spriteMode && draftGenerateForm.imagePriorDataUrl && (
-                    <button
-                      className="ghost-button"
-                      onClick={() => patchGenerateDraft({ imagePriorDataUrl: undefined, imagePriorSource: null })}
-                      type="button"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-              </div>
-
               <button
                 className="image-dropzone"
                 onClick={() => imagePriorInputRef.current?.click()}
@@ -652,7 +608,6 @@ function App() {
 
             {generatePreviewChild && (
               <section className="output-panel">
-                <h2>Generate output</h2>
                 {generatePreviewChild.outputs.imagePaths.length > 0 ? (
                   <div className="image-grid">
                     {generatePreviewChild.outputs.imagePaths.map((path) => {
@@ -667,9 +622,42 @@ function App() {
                 ) : (
                   <p className="muted">No output image saved for this child.</p>
                 )}
-                {generatePreviewChild.outputs.text && (
-                  <pre className="output-text">{generatePreviewChild.outputs.text}</pre>
-                )}
+                <div className="result-metadata">
+                  {generatePreviewChild.outputs.completion?.finishReason && (
+                    <p className="meta-line">
+                      <span className="meta-key">finish_reason</span>
+                      <span className="meta-value">{generatePreviewChild.outputs.completion.finishReason}</span>
+                    </p>
+                  )}
+
+                  {generatePreviewChild.outputs.text && (
+                    <div className="meta-block">
+                      <p className="meta-key">message.content</p>
+                      <pre className="output-text">{generatePreviewChild.outputs.text}</pre>
+                    </div>
+                  )}
+
+                  {generatePreviewChild.outputs.completion?.refusal && (
+                    <div className="meta-block">
+                      <p className="meta-key">message.refusal</p>
+                      <pre className="output-text">{generatePreviewChild.outputs.completion.refusal}</pre>
+                    </div>
+                  )}
+
+                  {generatePreviewChild.outputs.completion?.reasoning && (
+                    <div className="meta-block">
+                      <p className="meta-key">message.reasoning</p>
+                      <pre className="output-text">{generatePreviewChild.outputs.completion.reasoning}</pre>
+                    </div>
+                  )}
+
+                  {generatePreviewChild.outputs.completion?.reasoningDetails && (
+                    <div className="meta-block">
+                      <p className="meta-key">message.reasoning_details</p>
+                      <pre className="output-text">{generatePreviewChild.outputs.completion.reasoningDetails}</pre>
+                    </div>
+                  )}
+                </div>
               </section>
             )}
           </section>

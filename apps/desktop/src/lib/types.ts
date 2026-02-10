@@ -14,7 +14,6 @@ export interface GenerateDraft {
   promptText: string;
   resolution: Resolution;
   imagePriorDataUrl?: string;
-  imagePriorSource: "grid" | "upload" | null;
 }
 
 export interface EditDraft {

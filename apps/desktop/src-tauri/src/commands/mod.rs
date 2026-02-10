@@ -137,6 +137,7 @@ pub async fn generate_image(
                 text: openrouter_response.text,
                 image_paths: image_paths.clone(),
                 primary_image_path: image_paths.first().cloned(),
+                completion: openrouter_response.completion,
             },
         };
 
@@ -233,6 +234,7 @@ pub async fn edit_image(
                 text: openrouter_response.text,
                 image_paths: image_paths.clone(),
                 primary_image_path: image_paths.first().cloned(),
+                completion: openrouter_response.completion,
             },
         };
 

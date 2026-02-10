@@ -107,6 +107,16 @@ pub struct ChildOutputs {
     pub text: Option<String>,
     pub image_paths: Vec<String>,
     pub primary_image_path: Option<String>,
+    pub completion: Option<CompletionMetadata>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletionMetadata {
+    pub finish_reason: Option<String>,
+    pub refusal: Option<String>,
+    pub reasoning: Option<String>,
+    pub reasoning_details: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
