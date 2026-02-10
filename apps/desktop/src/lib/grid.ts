@@ -24,7 +24,8 @@ export function createSpriteGridDataUrl(rows: number, cols: number, resolution: 
     return "";
   }
 
-  context.clearRect(0, 0, width, height);
+  context.fillStyle = "#00FF00";
+  context.fillRect(0, 0, width, height);
   context.strokeStyle = "rgba(0,0,0,0.9)";
   context.lineWidth = Math.max(1, Math.round(Math.min(width, height) / 512));
 

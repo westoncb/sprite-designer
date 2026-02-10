@@ -38,7 +38,7 @@ pub fn build_sprite_prompt(request: &GenerateRequest) -> AppResult<String> {
 
     let total_frames = rows * cols;
     let mut prompt = format!(
-        "Sprite Sheet Spec\nFrames: {total_frames} frames total\nLayout: {cols} columns x {rows} rows\nOrder: left-to-right, top-to-bottom\nCamera: {camera_angle}; fixed camera and scale across frames\nSubject: {object_description}\nStyle: {style}\nAlignment rules: same baseline, consistent proportions, consistent lighting, even padding\nBackground: transparent\nConstraints: no text, no borders, no watermark. Generate one image file only."
+        "Sprite Sheet Spec\nFrames: {total_frames} frames total\nLayout: {cols} columns x {rows} rows\nOrder: left-to-right, top-to-bottom\nCamera: {camera_angle}; fixed camera and scale across frames\nSubject: {object_description}\nStyle: {style}\nAlignment rules: same baseline, consistent proportions, consistent lighting, even padding\nBackground: generate using a pure chromakey green background (#00FF00)\nConstraints: no text, no borders, no watermark. Generate one image file only."
     );
 
     if request.image_prior_data_url.is_some() {

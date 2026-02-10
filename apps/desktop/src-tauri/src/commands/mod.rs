@@ -102,10 +102,22 @@ pub async fn generate_image(
         let chosen_data_urls =
             choose_best_images_for_resolution(&openrouter_response.image_data_urls, req.resolution);
         let child_id = Uuid::new_v4().to_string();
+        let sprite_grid = if req.sprite_mode {
+            Some((req.rows.unwrap_or(1), req.cols.unwrap_or(1)))
+        } else {
+            None
+        };
         let mut image_paths = Vec::new();
         for (index, data_url) in chosen_data_urls.iter().enumerate() {
-            let image_path =
-                storage::write_output_image(&app, &project_record.id, &child_id, index, data_url)?;
+            let image_path = storage::write_output_image(
+                &app,
+                &project_record.id,
+                &child_id,
+                index,
+                data_url,
+                req.sprite_mode,
+                sprite_grid,
+            )?;
             image_paths.push(image_path);
         }
 
@@ -210,11 +222,26 @@ pub async fn edit_image(
         };
         let child_id = Uuid::new_v4().to_string();
         let child_name = storage::next_child_name(&app, &project_record.id, ChildType::Edit)?;
+        let sprite_grid = if is_sprite_sheet_edit {
+            match (inherited_rows, inherited_cols) {
+                (Some(rows), Some(cols)) if rows > 0 && cols > 0 => Some((rows, cols)),
+                _ => None,
+            }
+        } else {
+            None
+        };
 
         let mut image_paths = Vec::new();
         for (index, data_url) in chosen_data_urls.iter().enumerate() {
-            let image_path =
-                storage::write_output_image(&app, &project_record.id, &child_id, index, data_url)?;
+            let image_path = storage::write_output_image(
+                &app,
+                &project_record.id,
+                &child_id,
+                index,
+                data_url,
+                is_sprite_sheet_edit,
+                sprite_grid,
+            )?;
             image_paths.push(image_path);
         }
 

@@ -1,11 +1,15 @@
 use std::{
+    collections::VecDeque,
     fs,
     path::{Path, PathBuf},
 };
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use chrono::Utc;
-use image::ImageFormat;
+use image::{
+    codecs::png::{CompressionType, FilterType, PngEncoder},
+    ColorType, ImageEncoder, RgbaImage,
+};
 use serde::{de::DeserializeOwned, Serialize};
 use tauri::{AppHandle, Manager};
 use uuid::Uuid;
@@ -182,12 +186,18 @@ pub fn write_output_image(
     child_id: &str,
     index: usize,
     data_url: &str,
+    apply_chromakey: bool,
+    sprite_grid: Option<(u32, u32)>,
 ) -> AppResult<String> {
     let image_bytes = parse_data_url(data_url)?;
-    let image = image::load_from_memory(&image_bytes.bytes)?;
+    let mut image = image::load_from_memory(&image_bytes.bytes)?.into_rgba8();
+    if apply_chromakey {
+        apply_chromakey_transparency(&mut image, sprite_grid);
+    }
     let image_path = images_dir(app, project_id)?.join(format!("{child_id}_{index}.png"));
 
-    image.save_with_format(&image_path, ImageFormat::Png)?;
+    let png_bytes = encode_png_optimized(image.as_raw(), image.width(), image.height())?;
+    fs::write(&image_path, png_bytes)?;
 
     Ok(image_path.to_string_lossy().to_string())
 }
@@ -273,6 +283,328 @@ fn normalize_project_name(name: Option<String>) -> String {
         Some(name) if !name.trim().is_empty() => name.trim().to_string(),
         _ => format!("sprite-project-{}", Utc::now().format("%m-%d-%Y")),
     }
+}
+
+fn apply_chromakey_transparency(image: &mut RgbaImage, sprite_grid: Option<(u32, u32)>) {
+    let (width, height) = image.dimensions();
+    if width == 0 || height == 0 {
+        return;
+    }
+
+    let mut visited = vec![false; (width * height) as usize];
+    let mut queue = VecDeque::new();
+
+    let seeded = sprite_grid
+        .filter(|(rows, cols)| *rows > 0 && *cols > 0)
+        .map(|(rows, cols)| enqueue_chromakey_cell_borders(rows, cols, image, &mut visited, &mut queue))
+        .unwrap_or(false);
+
+    if !seeded {
+        enqueue_chromakey_borders(image, &mut visited, &mut queue);
+    }
+
+    while let Some((x, y)) = queue.pop_front() {
+        image.put_pixel(x, y, image::Rgba([0, 0, 0, 0]));
+
+        let neighbors = [
+            (x.wrapping_sub(1), y, x > 0),
+            (x + 1, y, x + 1 < width),
+            (x, y.wrapping_sub(1), y > 0),
+            (x, y + 1, y + 1 < height),
+        ];
+
+        for (nx, ny, in_bounds) in neighbors {
+            if in_bounds {
+                enqueue_if_chromakey(
+                    nx,
+                    ny,
+                    image,
+                    &mut visited,
+                    &mut queue,
+                    ChromaMatchMode::Expand,
+                );
+            }
+        }
+    }
+
+    clear_strong_chromakey_anywhere(image);
+    clear_chromakey_fringe(image, 2);
+}
+
+fn enqueue_chromakey_borders(
+    image: &RgbaImage,
+    visited: &mut [bool],
+    queue: &mut VecDeque<(u32, u32)>,
+) {
+    let (width, height) = image.dimensions();
+
+    for x in 0..width {
+        let _ = enqueue_if_chromakey(x, 0, image, visited, queue, ChromaMatchMode::Seed);
+        if height > 1 {
+            let _ = enqueue_if_chromakey(
+                x,
+                height - 1,
+                image,
+                visited,
+                queue,
+                ChromaMatchMode::Seed,
+            );
+        }
+    }
+
+    for y in 0..height {
+        let _ = enqueue_if_chromakey(0, y, image, visited, queue, ChromaMatchMode::Seed);
+        if width > 1 {
+            let _ = enqueue_if_chromakey(
+                width - 1,
+                y,
+                image,
+                visited,
+                queue,
+                ChromaMatchMode::Seed,
+            );
+        }
+    }
+}
+
+fn enqueue_chromakey_cell_borders(
+    rows: u32,
+    cols: u32,
+    image: &RgbaImage,
+    visited: &mut [bool],
+    queue: &mut VecDeque<(u32, u32)>,
+) -> bool {
+    let (width, height) = image.dimensions();
+    let mut seeded = false;
+
+    for row in 0..rows {
+        let y_start = (row * height) / rows;
+        let y_end = (((row + 1) * height) / rows).saturating_sub(1);
+        if y_start > y_end {
+            continue;
+        }
+        let (top, bottom) = inner_span(y_start, y_end);
+
+        for col in 0..cols {
+            let x_start = (col * width) / cols;
+            let x_end = (((col + 1) * width) / cols).saturating_sub(1);
+            if x_start > x_end {
+                continue;
+            }
+            let (left, right) = inner_span(x_start, x_end);
+
+            for x in left..=right {
+                seeded |= enqueue_if_chromakey(
+                    x,
+                    top,
+                    image,
+                    visited,
+                    queue,
+                    ChromaMatchMode::Seed,
+                );
+                seeded |= enqueue_if_chromakey(
+                    x,
+                    bottom,
+                    image,
+                    visited,
+                    queue,
+                    ChromaMatchMode::Seed,
+                );
+            }
+            for y in top..=bottom {
+                seeded |= enqueue_if_chromakey(
+                    left,
+                    y,
+                    image,
+                    visited,
+                    queue,
+                    ChromaMatchMode::Seed,
+                );
+                seeded |= enqueue_if_chromakey(
+                    right,
+                    y,
+                    image,
+                    visited,
+                    queue,
+                    ChromaMatchMode::Seed,
+                );
+            }
+        }
+    }
+
+    seeded
+}
+
+fn inner_span(start: u32, end: u32) -> (u32, u32) {
+    if end > start + 1 {
+        (start + 1, end - 1)
+    } else {
+        (start, end)
+    }
+}
+
+fn enqueue_if_chromakey(
+    x: u32,
+    y: u32,
+    image: &RgbaImage,
+    visited: &mut [bool],
+    queue: &mut VecDeque<(u32, u32)>,
+    mode: ChromaMatchMode,
+) -> bool {
+    let width = image.width();
+    let index = (y * width + x) as usize;
+    if visited[index] {
+        return false;
+    }
+
+    let pixel = image.get_pixel(x, y).0;
+    if matches_chromakey(pixel[0], pixel[1], pixel[2], mode) {
+        visited[index] = true;
+        queue.push_back((x, y));
+        return true;
+    }
+
+    false
+}
+
+#[derive(Copy, Clone)]
+enum ChromaMatchMode {
+    Seed,
+    Expand,
+}
+
+fn matches_chromakey(r: u8, g: u8, b: u8, mode: ChromaMatchMode) -> bool {
+    let max_rb = r.max(b);
+    let green_lead = g.saturating_sub(max_rb);
+    let dist_sq = chroma_green_distance_sq(r, g, b);
+
+    match mode {
+        ChromaMatchMode::Seed => {
+            if g < 80 || green_lead < 18 {
+                return false;
+            }
+            dist_sq <= 30_000
+        }
+        ChromaMatchMode::Expand => {
+            if g < 40 || green_lead < 6 {
+                return false;
+            }
+            dist_sq <= 45_000
+        }
+    }
+}
+
+fn chroma_green_distance_sq(r: u8, g: u8, b: u8) -> u32 {
+    let dr = r as i32;
+    let dg = 255_i32 - g as i32;
+    let db = b as i32;
+
+    (dr * dr + dg * dg + db * db) as u32
+}
+
+fn clear_strong_chromakey_anywhere(image: &mut RgbaImage) {
+    for pixel in image.pixels_mut() {
+        if pixel[3] == 0 {
+            continue;
+        }
+
+        if matches_chromakey_global_strong(pixel[0], pixel[1], pixel[2]) {
+            *pixel = image::Rgba([0, 0, 0, 0]);
+        }
+    }
+}
+
+fn matches_chromakey_global_strong(r: u8, g: u8, b: u8) -> bool {
+    let max_rb = r.max(b);
+    let green_lead = g.saturating_sub(max_rb);
+    if g < 95 || green_lead < 20 {
+        return false;
+    }
+
+    chroma_green_distance_sq(r, g, b) <= 36_000
+}
+
+fn clear_chromakey_fringe(image: &mut RgbaImage, passes: usize) {
+    let (width, height) = image.dimensions();
+    for _ in 0..passes {
+        let mut to_clear = Vec::new();
+
+        for y in 0..height {
+            for x in 0..width {
+                let pixel = image.get_pixel(x, y).0;
+                if pixel[3] == 0 {
+                    continue;
+                }
+
+                if !matches_chromakey_fringe(pixel[0], pixel[1], pixel[2]) {
+                    continue;
+                }
+
+                if has_transparent_neighbor(image, x, y, width, height) {
+                    to_clear.push((x, y));
+                }
+            }
+        }
+
+        if to_clear.is_empty() {
+            break;
+        }
+
+        for (x, y) in to_clear {
+            image.put_pixel(x, y, image::Rgba([0, 0, 0, 0]));
+        }
+    }
+}
+
+fn matches_chromakey_fringe(r: u8, g: u8, b: u8) -> bool {
+    let max_rb = r.max(b);
+    let green_lead = g.saturating_sub(max_rb);
+    if g < 35 || green_lead < 2 {
+        return false;
+    }
+
+    chroma_green_distance_sq(r, g, b) <= 55_000
+}
+
+fn has_transparent_neighbor(image: &RgbaImage, x: u32, y: u32, width: u32, height: u32) -> bool {
+    let x_min = x.saturating_sub(1);
+    let y_min = y.saturating_sub(1);
+    let x_max = (x + 1).min(width.saturating_sub(1));
+    let y_max = (y + 1).min(height.saturating_sub(1));
+
+    for ny in y_min..=y_max {
+        for nx in x_min..=x_max {
+            if nx == x && ny == y {
+                continue;
+            }
+
+            if image.get_pixel(nx, ny).0[3] == 0 {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+fn encode_png_optimized(rgba: &[u8], width: u32, height: u32) -> AppResult<Vec<u8>> {
+    let mut png_bytes = Vec::new();
+    {
+        let encoder = PngEncoder::new_with_quality(
+            &mut png_bytes,
+            CompressionType::Best,
+            FilterType::Adaptive,
+        );
+        encoder
+            .write_image(rgba, width, height, ColorType::Rgba8)
+            .map_err(|error| AppError::msg(format!("failed to encode png: {error}")))?;
+    }
+
+    let mut options = oxipng::Options::from_preset(3);
+    options.strip = oxipng::StripChunks::Safe;
+
+    oxipng::optimize_from_memory(&png_bytes, &options)
+        .map_err(|error| AppError::msg(format!("failed to optimize png: {error}")))
 }
 
 fn read_json<T: DeserializeOwned>(path: &Path) -> AppResult<T> {
