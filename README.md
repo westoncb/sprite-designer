@@ -1,5 +1,7 @@
 # Sprite Designer
 
+![Sprite Designer screenshot](readme_media/screen.png)
+
 Sprite Designer is a Tauri desktop app for generating and editing sprite images with OpenRouter models.
 
 ## Quick start
