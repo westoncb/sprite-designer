@@ -392,7 +392,6 @@ function App() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <h1 className="sidebar-title">Sprite/Art Studio</h1>
         <button
           className={`list-item list-item-new ${selectedChildId === NEW_ITEM ? "is-selected" : ""}`}
           onClick={handleSelectNew}
@@ -416,19 +415,27 @@ function App() {
               <span className="project-meta">{project.children.length}</span>
             </button>
             <div className="child-list">
-              {project.children.map((child) => (
-                <button
-                  className={`list-item child-item ${
-                    selectedProjectId === project.id && selectedChildId === child.id ? "is-selected" : ""
-                  }`}
-                  key={child.id}
-                  onClick={() => handleSelectChild(project.id, child.id)}
-                  type="button"
-                >
-                  <span>{child.name}</span>
-                  <span className={`chip chip-${child.type}`}>{child.type}</span>
-                </button>
-              ))}
+              {project.children.map((child) => {
+                const isSelectedChild = selectedProjectId === project.id && selectedChildId === child.id;
+                const isRunning = pendingAction === child.type && isSelectedChild;
+
+                return (
+                  <button
+                    className={`list-item child-item ${isSelectedChild ? "is-selected" : ""}`}
+                    key={child.id}
+                    onClick={() => handleSelectChild(project.id, child.id)}
+                    type="button"
+                  >
+                    <span>{child.name}</span>
+                    <span
+                      aria-label={isRunning ? "In progress" : "Done"}
+                      className={`status-indicator ${isRunning ? "is-loading" : "is-done"}`}
+                    >
+                      {isRunning ? "" : "✓"}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </section>
         ))}
@@ -464,6 +471,7 @@ function App() {
               <label className="toggle-field">
                 <span>Sprite sheet</span>
                 <input
+                  className="toggle-switch"
                   checked={draftGenerateForm.spriteMode}
                   onChange={(event) => handleToggleSpriteMode(event.target.checked)}
                   type="checkbox"
