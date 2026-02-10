@@ -515,43 +515,46 @@ function App() {
 
         {isLoadingProjects && <p className="muted">Loading projects...</p>}
 
-        {projects.map((project) => (
-          <section className="project-group" key={project.id}>
-            <button
-              className={`list-item project-item ${
-                selectedProjectId === project.id && selectedChildId === null ? "is-selected" : ""
-              }`}
-              onClick={() => handleSelectProject(project.id)}
-              type="button"
-            >
-              <span className="project-name">{project.name}</span>
-              <span className="project-meta">{project.children.length}</span>
-            </button>
-            <div className="child-list">
-              {project.children.map((child) => {
-                const isSelectedChild = selectedProjectId === project.id && selectedChildId === child.id;
-                const isRunning = pendingAction === child.type && isSelectedChild;
+        {projects.map((project) => {
+          const isProjectSelected = selectedProjectId === project.id && selectedChildId === null;
+          const isProjectPending = selectedProjectId === project.id && pendingAction !== null;
 
-                return (
-                  <button
-                    className={`list-item child-item ${isSelectedChild ? "is-selected" : ""}`}
-                    key={child.id}
-                    onClick={() => handleSelectChild(project.id, child.id)}
-                    type="button"
-                  >
-                    <span>{child.name}</span>
-                    <span
-                      aria-label={isRunning ? "In progress" : "Done"}
-                      className={`status-indicator ${isRunning ? "is-loading" : "is-done"}`}
+          return (
+            <section className="project-group" key={project.id}>
+              <button
+                className={`list-item project-item ${isProjectSelected ? "is-selected" : ""}`}
+                onClick={() => handleSelectProject(project.id)}
+                type="button"
+              >
+                <span className="project-name">{project.name}</span>
+                <span className="project-meta-wrap">
+                  <span className="project-meta">{project.children.length}</span>
+                  {isProjectPending && <span aria-hidden="true" className="project-spinner" />}
+                </span>
+              </button>
+              <div className="child-list">
+                {project.children.map((child) => {
+                  const isSelectedChild = selectedProjectId === project.id && selectedChildId === child.id;
+
+                  return (
+                    <button
+                      className={`list-item child-item ${isSelectedChild ? "is-selected" : ""}`}
+                      key={child.id}
+                      onClick={() => handleSelectChild(project.id, child.id)}
+                      type="button"
                     >
-                      {isRunning ? "" : "✓"}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-        ))}
+                      <span className="child-item-marker" aria-hidden="true">
+                        {">"}
+                      </span>
+                      <span className="child-item-name">{child.name}</span>
+                      <span className="child-item-type">{child.type}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })}
       </aside>
 
       <main className="main-panel">
@@ -567,6 +570,20 @@ function App() {
             </button>
           ))}
         </header>
+
+        {pendingAction !== null && (
+          <section aria-live="polite" className="operation-banner" role="status">
+            <span aria-hidden="true" className="operation-banner-spinner" />
+            <div className="operation-banner-copy">
+              <p className="operation-banner-title">Generation in progress</p>
+              <p className="operation-banner-detail">
+                {pendingAction === "edit"
+                  ? "Applying edit prompt and generating output..."
+                  : "Generating image output..."}
+              </p>
+            </div>
+          </section>
+        )}
 
         {activeTab === "generate" && (
           <section className="panel-content">
