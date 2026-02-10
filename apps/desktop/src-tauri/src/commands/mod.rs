@@ -196,6 +196,18 @@ pub async fn edit_image(
             &openrouter_response.image_data_urls,
             chosen_resolution,
         );
+        let inherited_rows = base_child.inputs.rows;
+        let inherited_cols = base_child.inputs.cols;
+        let is_sprite_sheet_edit = matches!(base_child.mode, ChildMode::Sprite)
+            || matches!(
+                (inherited_rows, inherited_cols),
+                (Some(rows), Some(cols)) if rows > 1 && cols > 1
+            );
+        let child_mode = if is_sprite_sheet_edit {
+            ChildMode::Sprite
+        } else {
+            ChildMode::Edit
+        };
         let child_id = Uuid::new_v4().to_string();
         let child_name = storage::next_child_name(&app, &project_record.id, ChildType::Edit)?;
 
@@ -212,17 +224,41 @@ pub async fn edit_image(
             r#type: ChildType::Edit,
             name: child_name,
             created_at: Utc::now(),
-            mode: ChildMode::Edit,
+            mode: child_mode,
             inputs: ChildInputs {
-                rows: None,
-                cols: None,
-                object_description: None,
-                style: None,
-                camera_angle: None,
-                prompt_text: None,
+                rows: if is_sprite_sheet_edit {
+                    inherited_rows
+                } else {
+                    None
+                },
+                cols: if is_sprite_sheet_edit {
+                    inherited_cols
+                } else {
+                    None
+                },
+                object_description: if is_sprite_sheet_edit {
+                    base_child.inputs.object_description.clone()
+                } else {
+                    None
+                },
+                style: if is_sprite_sheet_edit {
+                    base_child.inputs.style.clone()
+                } else {
+                    None
+                },
+                camera_angle: if is_sprite_sheet_edit {
+                    base_child.inputs.camera_angle.clone()
+                } else {
+                    None
+                },
+                prompt_text: if is_sprite_sheet_edit {
+                    base_child.inputs.prompt_text.clone()
+                } else {
+                    None
+                },
                 edit_prompt: Some(req.edit_prompt.clone()),
                 base_child_id: Some(req.base_child_id.clone()),
-                resolution: req.resolution,
+                resolution: Some(chosen_resolution),
                 image_prior_data_url: None,
                 base_image_path: Some(base_image_path),
             },

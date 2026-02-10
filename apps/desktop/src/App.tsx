@@ -221,12 +221,29 @@ function App() {
       return undefined;
     }
 
+    const resolveBaseChild = (candidate?: Child): Child | undefined => {
+      if (!candidate) {
+        return undefined;
+      }
+
+      if (candidate.type !== "edit") {
+        return candidate;
+      }
+
+      const baseChildId = candidate.inputs.baseChildId;
+      if (!baseChildId) {
+        return candidate;
+      }
+
+      return selectedProject.children.find((child) => child.id === baseChildId) ?? candidate;
+    };
+
     if (selectedChild) {
-      return selectedChild;
+      return resolveBaseChild(selectedChild);
     }
 
     if (selectedChildId === null) {
-      return latestChild(selectedProject.children);
+      return resolveBaseChild(latestChild(selectedProject.children));
     }
 
     return undefined;
