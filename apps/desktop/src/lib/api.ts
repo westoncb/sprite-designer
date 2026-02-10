@@ -21,9 +21,11 @@ export async function editImage(req: EditRequest): Promise<ChildResult> {
 export async function exportImageToPath(
   sourceImagePath: string,
   destinationPath: string,
+  removeChromakeyBackground: boolean,
 ): Promise<string> {
   return invoke<string>("export_image_to_path", {
     sourceImagePath,
     destinationPath,
+    removeChromakeyBackground,
   });
 }

@@ -232,6 +232,7 @@ function App() {
   const [generateError, setGenerateError] = React.useState<string | null>(null);
   const [editError, setEditError] = React.useState<string | null>(null);
   const [isExporting, setIsExporting] = React.useState(false);
+  const [removeExportChromakey, setRemoveExportChromakey] = React.useState(false);
   const [exportError, setExportError] = React.useState<string | null>(null);
   const [exportResult, setExportResult] = React.useState<string | null>(null);
   const [isSeedImageExpanded, setIsSeedImageExpanded] = React.useState(false);
@@ -619,6 +620,7 @@ function App() {
     previewChild?.outputs.primaryImagePath ??
     previewChild?.outputs.imagePaths[0];
   const previewImageSrc = toRenderableImage(previewImagePath);
+  const showExportChromaToggle = !!previewChild && previewChild.mode !== "sprite";
   const exportFileName = React.useMemo(() => {
     const baseName = previewChild?.name
       ? toSafeExportName(previewChild.name)
@@ -681,14 +683,18 @@ function App() {
 
     setIsExporting(true);
     try {
-      const finalPath = await exportImageToPath(previewImagePath, destinationPath);
+      const finalPath = await exportImageToPath(
+        previewImagePath,
+        destinationPath,
+        showExportChromaToggle && removeExportChromakey,
+      );
       setExportResult(`Saved to ${finalPath}`);
     } catch (error) {
       setExportError(asErrorMessage(error));
     } finally {
       setIsExporting(false);
     }
-  }, [previewImagePath, exportFileName]);
+  }, [previewImagePath, exportFileName, removeExportChromakey, showExportChromaToggle]);
 
   return (
     <div className="app-shell">
@@ -1319,6 +1325,20 @@ function App() {
                 </section>
 
                 <div className="action-row">
+                  {showExportChromaToggle && (
+                    <label className="toggle-field">
+                      <span>Remove 0x00FF00 background</span>
+                      <input
+                        className="toggle-switch"
+                        checked={removeExportChromakey}
+                        disabled={!previewImagePath || isExporting}
+                        onChange={(event) =>
+                          setRemoveExportChromakey(event.target.checked)
+                        }
+                        type="checkbox"
+                      />
+                    </label>
+                  )}
                   <button
                     className="primary-button"
                     disabled={!previewImagePath || isExporting}

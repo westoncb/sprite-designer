@@ -252,7 +252,11 @@ pub fn read_image_path_as_data_url(path: &Path) -> AppResult<String> {
     Ok(format!("data:{mime};base64,{}", STANDARD.encode(bytes)))
 }
 
-pub fn export_image_to_path(source_image_path: &Path, destination_path: &Path) -> AppResult<String> {
+pub fn export_image_to_path(
+    source_image_path: &Path,
+    destination_path: &Path,
+    remove_chromakey_background: bool,
+) -> AppResult<String> {
     if !source_image_path.exists() {
         return Err(AppError::msg(format!(
             "source image path not found: {}",
@@ -261,7 +265,9 @@ pub fn export_image_to_path(source_image_path: &Path, destination_path: &Path) -
     }
 
     let mut output_path = destination_path.to_path_buf();
-    if output_path.extension().is_none() {
+    if remove_chromakey_background {
+        output_path.set_extension("png");
+    } else if output_path.extension().is_none() {
         output_path.set_extension("png");
     }
 
@@ -269,7 +275,16 @@ pub fn export_image_to_path(source_image_path: &Path, destination_path: &Path) -
         fs::create_dir_all(parent)?;
     }
 
-    fs::copy(source_image_path, &output_path)?;
+    if remove_chromakey_background {
+        let source_bytes = fs::read(source_image_path)?;
+        let mut image = image::load_from_memory(&source_bytes)?.into_rgba8();
+        apply_export_chromakey_transparency(&mut image);
+        let png_bytes = encode_png_optimized(image.as_raw(), image.width(), image.height())?;
+        fs::write(&output_path, png_bytes)?;
+    } else {
+        fs::copy(source_image_path, &output_path)?;
+    }
+
     Ok(output_path.to_string_lossy().to_string())
 }
 
@@ -558,6 +573,144 @@ fn clear_chromakey_fringe(image: &mut RgbaImage, passes: usize) {
                 }
 
                 if !matches_chromakey_fringe(pixel[0], pixel[1], pixel[2]) {
+                    continue;
+                }
+
+                if has_transparent_neighbor(image, x, y, width, height) {
+                    to_clear.push((x, y));
+                }
+            }
+        }
+
+        if to_clear.is_empty() {
+            break;
+        }
+
+        for (x, y) in to_clear {
+            image.put_pixel(x, y, image::Rgba([0, 0, 0, 0]));
+        }
+    }
+}
+
+fn apply_export_chromakey_transparency(image: &mut RgbaImage) {
+    let (width, height) = image.dimensions();
+    if width == 0 || height == 0 {
+        return;
+    }
+
+    let mut visited = vec![false; (width * height) as usize];
+    let mut queue = VecDeque::new();
+
+    for x in 0..width {
+        let _ = enqueue_if_export_chromakey(x, 0, image, &mut visited, &mut queue, true);
+        if height > 1 {
+            let _ = enqueue_if_export_chromakey(
+                x,
+                height - 1,
+                image,
+                &mut visited,
+                &mut queue,
+                true,
+            );
+        }
+    }
+
+    for y in 0..height {
+        let _ = enqueue_if_export_chromakey(0, y, image, &mut visited, &mut queue, true);
+        if width > 1 {
+            let _ = enqueue_if_export_chromakey(
+                width - 1,
+                y,
+                image,
+                &mut visited,
+                &mut queue,
+                true,
+            );
+        }
+    }
+
+    while let Some((x, y)) = queue.pop_front() {
+        image.put_pixel(x, y, image::Rgba([0, 0, 0, 0]));
+
+        let neighbors = [
+            (x.wrapping_sub(1), y, x > 0),
+            (x + 1, y, x + 1 < width),
+            (x, y.wrapping_sub(1), y > 0),
+            (x, y + 1, y + 1 < height),
+        ];
+
+        for (nx, ny, in_bounds) in neighbors {
+            if in_bounds {
+                let _ = enqueue_if_export_chromakey(
+                    nx,
+                    ny,
+                    image,
+                    &mut visited,
+                    &mut queue,
+                    false,
+                );
+            }
+        }
+    }
+
+    clear_export_chromakey_fringe(image, 2);
+}
+
+fn enqueue_if_export_chromakey(
+    x: u32,
+    y: u32,
+    image: &RgbaImage,
+    visited: &mut [bool],
+    queue: &mut VecDeque<(u32, u32)>,
+    seed: bool,
+) -> bool {
+    let width = image.width();
+    let index = (y * width + x) as usize;
+    if visited[index] {
+        return false;
+    }
+
+    let pixel = image.get_pixel(x, y).0;
+    if matches_export_chromakey(pixel[0], pixel[1], pixel[2], seed) {
+        visited[index] = true;
+        queue.push_back((x, y));
+        return true;
+    }
+
+    false
+}
+
+fn matches_export_chromakey(r: u8, g: u8, b: u8, seed: bool) -> bool {
+    let max_rb = r.max(b);
+    let green_lead = g.saturating_sub(max_rb);
+    let dist_sq = chroma_green_distance_sq(r, g, b);
+
+    if seed {
+        if g < 80 || green_lead < 16 {
+            return false;
+        }
+        return dist_sq <= 34_000;
+    }
+
+    if g < 35 || green_lead < 4 {
+        return false;
+    }
+    dist_sq <= 50_000
+}
+
+fn clear_export_chromakey_fringe(image: &mut RgbaImage, passes: usize) {
+    let (width, height) = image.dimensions();
+    for _ in 0..passes {
+        let mut to_clear = Vec::new();
+
+        for y in 0..height {
+            for x in 0..width {
+                let pixel = image.get_pixel(x, y).0;
+                if pixel[3] == 0 {
+                    continue;
+                }
+
+                if !matches_export_chromakey(pixel[0], pixel[1], pixel[2], false) {
                     continue;
                 }
 
