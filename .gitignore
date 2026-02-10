@@ -3,5 +3,7 @@ pnpm-lock.yaml
 .env
 .DS_Store
 dist
-apps/desktop/dist
+!apps/desktop/dist/
+apps/desktop/dist/*
+!apps/desktop/dist/.gitkeep
 apps/desktop/src-tauri/target
