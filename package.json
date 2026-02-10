@@ -1,0 +1,14 @@
+{
+  "name": "sprite-designer",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.0.0",
+  "scripts": {
+    "tauri": "pnpm --filter @sprite-designer/desktop tauri",
+    "dev": "pnpm --filter @sprite-designer/desktop dev",
+    "build": "pnpm --filter @sprite-designer/desktop build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.2.5"
+  }
+}
