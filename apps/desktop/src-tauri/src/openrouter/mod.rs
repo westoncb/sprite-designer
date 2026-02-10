@@ -116,11 +116,6 @@ impl OpenRouterClient {
 
         let response_json: Value = serde_json::from_str(&body)?;
         let image_data_urls = extract_image_data_urls(&response_json);
-        if image_data_urls.is_empty() {
-            return Err(AppError::msg(
-                "OpenRouter response did not include any image payloads",
-            ));
-        }
 
         let text = extract_text(&response_json);
         let completion = extract_completion_metadata(&response_json);
@@ -332,7 +327,7 @@ fn extract_completion_metadata(response: &Value) -> Option<CompletionMetadata> {
                 .get("reasoning_details")
                 .or_else(|| value.get("reasoningDetails"))
         })
-        .and_then(to_string_value);
+        .and_then(extract_reasoning_details_text);
 
     if finish_reason.is_none()
         && refusal.is_none()
@@ -362,6 +357,58 @@ fn to_string_value(value: &Value) -> Option<String> {
             }
         }
         _ => serde_json::to_string_pretty(value).ok(),
+    }
+}
+
+fn extract_reasoning_details_text(value: &Value) -> Option<String> {
+    match value {
+        Value::Null => None,
+        Value::String(text) => {
+            let trimmed = text.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        }
+        _ => {
+            let mut snippets = Vec::new();
+            collect_reasoning_text_snippets(value, &mut snippets);
+            if snippets.is_empty() {
+                None
+            } else {
+                Some(snippets.join("\n\n"))
+            }
+        }
+    }
+}
+
+fn collect_reasoning_text_snippets(value: &Value, snippets: &mut Vec<String>) {
+    match value {
+        Value::Array(items) => {
+            for item in items {
+                collect_reasoning_text_snippets(item, snippets);
+            }
+        }
+        Value::Object(map) => {
+            if let Some(text) = map.get("text").and_then(Value::as_str) {
+                let trimmed = text.trim();
+                if !trimmed.is_empty() {
+                    snippets.push(trimmed.to_string());
+                }
+            }
+
+            for (key, nested) in map {
+                if key == "text" {
+                    continue;
+                }
+
+                if matches!(nested, Value::Array(_) | Value::Object(_)) {
+                    collect_reasoning_text_snippets(nested, snippets);
+                }
+            }
+        }
+        _ => {}
     }
 }
 

@@ -2,6 +2,7 @@ import React from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { Child, Project, Resolution } from "@sprite-designer/shared/types";
 import { editImage, generateImage, getProject, listProjects } from "./lib/api";
+import { SpriteSheetPlayer } from "./components/SpriteSheetPlayer";
 import {
   asErrorMessage,
   defaultProjectPlaceholder,
@@ -110,6 +111,66 @@ function validateGenerateDraft(draft: GenerateDraft): string | null {
   return null;
 }
 
+const MAX_REASONING_FALLBACK_CHARS = 6000;
+
+function collectReasoningDetailText(value: unknown, output: string[]): void {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectReasoningDetailText(item, output);
+    }
+    return;
+  }
+
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const text = record.text;
+    if (typeof text === "string" && text.trim()) {
+      output.push(text.trim());
+    }
+
+    for (const [key, nested] of Object.entries(record)) {
+      if (key === "text") {
+        continue;
+      }
+      if (Array.isArray(nested) || (nested && typeof nested === "object")) {
+        collectReasoningDetailText(nested, output);
+      }
+    }
+  }
+}
+
+function reasoningDetailsText(reasoningDetails?: string): string | undefined {
+  if (!reasoningDetails) {
+    return undefined;
+  }
+
+  const trimmed = reasoningDetails.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+    return trimmed;
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    const snippets: string[] = [];
+    collectReasoningDetailText(parsed, snippets);
+    if (snippets.length > 0) {
+      return snippets.join("\n\n");
+    }
+  } catch {
+    // Keep a bounded fallback for legacy payloads that are not valid JSON.
+  }
+
+  if (trimmed.length <= MAX_REASONING_FALLBACK_CHARS) {
+    return trimmed;
+  }
+
+  return `${trimmed.slice(0, MAX_REASONING_FALLBACK_CHARS)}\n\n[truncated large reasoning details]`;
+}
+
 function App() {
   const [projects, setProjects] = React.useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = React.useState<string | null>(null);
@@ -125,6 +186,9 @@ function App() {
   const [pendingAction, setPendingAction] = React.useState<"generate" | "edit" | null>(null);
   const [generateError, setGenerateError] = React.useState<string | null>(null);
   const [editError, setEditError] = React.useState<string | null>(null);
+  const [isSeedImageExpanded, setIsSeedImageExpanded] = React.useState(false);
+  const [previewMode, setPreviewMode] = React.useState<"image" | "animation">("image");
+  const [frameDelayMs, setFrameDelayMs] = React.useState(120);
   const imagePriorInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const selectedProject = React.useMemo(
@@ -169,6 +233,21 @@ function App() {
   }, [selectedProject, selectedChild, selectedChildId]);
 
   const editedPreviewChild = selectedChild?.type === "edit" ? selectedChild : undefined;
+  const previewChild = React.useMemo(() => {
+    if (!selectedProject) {
+      return undefined;
+    }
+
+    if (selectedChild) {
+      return selectedChild;
+    }
+
+    if (selectedChildId === null) {
+      return latestChild(selectedProject.children);
+    }
+
+    return undefined;
+  }, [selectedProject, selectedChild, selectedChildId]);
 
   const loadProjects = React.useCallback(async () => {
     setIsLoadingProjects(true);
@@ -388,6 +467,23 @@ function App() {
 
   const baseImageSrc = toRenderableImage(baseChildForEdit?.outputs.primaryImagePath);
   const editedImageSrc = toRenderableImage(editedPreviewChild?.outputs.primaryImagePath);
+  const parsedReasoningDetails = React.useMemo(
+    () => reasoningDetailsText(generatePreviewChild?.outputs.completion?.reasoningDetails),
+    [generatePreviewChild?.outputs.completion?.reasoningDetails]
+  );
+  const previewImagePath =
+    previewChild?.outputs.primaryImagePath ?? previewChild?.outputs.imagePaths[0];
+  const previewImageSrc = toRenderableImage(previewImagePath);
+  const previewRows = Math.max(1, previewChild?.inputs.rows ?? 1);
+  const previewCols = Math.max(1, previewChild?.inputs.cols ?? 1);
+  const previewIsSpriteSheet =
+    previewChild?.mode === "sprite" && previewRows * previewCols > 1;
+
+  React.useEffect(() => {
+    if (!previewIsSpriteSheet && previewMode !== "image") {
+      setPreviewMode("image");
+    }
+  }, [previewIsSpriteSheet, previewMode]);
 
   return (
     <div className="app-shell">
@@ -575,18 +671,35 @@ function App() {
               </>
             )}
 
-            <section className="image-prior-panel">
+            <section className={`image-prior-panel ${isSeedImageExpanded ? "is-expanded" : "is-collapsed"}`}>
               <button
-                className="image-dropzone"
-                onClick={() => imagePriorInputRef.current?.click()}
+                aria-expanded={isSeedImageExpanded}
+                className="seed-panel-toggle"
+                onClick={() => setIsSeedImageExpanded((previous) => !previous)}
                 type="button"
               >
-                {draftGenerateForm.imagePriorDataUrl ? (
-                  <img alt="Image prior" src={draftGenerateForm.imagePriorDataUrl} />
-                ) : (
-                  <span className="muted">Click to choose image prior (optional)</span>
-                )}
+                <span className="seed-panel-title">Seed image</span>
+                <span className="seed-panel-summary">
+                  {draftGenerateForm.imagePriorDataUrl ? "ready" : "empty"}
+                </span>
+                <span className={`seed-panel-chevron ${isSeedImageExpanded ? "is-open" : ""}`} aria-hidden="true">
+                  ▾
+                </span>
               </button>
+
+              {isSeedImageExpanded && (
+                <button
+                  className="image-dropzone"
+                  onClick={() => imagePriorInputRef.current?.click()}
+                  type="button"
+                >
+                  {draftGenerateForm.imagePriorDataUrl ? (
+                    <img alt="Image prior" src={draftGenerateForm.imagePriorDataUrl} />
+                  ) : (
+                    <span className="muted">Click to choose image prior (optional)</span>
+                  )}
+                </button>
+              )}
 
               <input
                 accept="image/png,image/jpeg,image/webp"
@@ -659,10 +772,10 @@ function App() {
                     </div>
                   )}
 
-                  {generatePreviewChild.outputs.completion?.reasoningDetails && (
+                  {parsedReasoningDetails && (
                     <div className="meta-block">
-                      <p className="meta-key">message.reasoning_details</p>
-                      <pre className="output-text">{generatePreviewChild.outputs.completion.reasoningDetails}</pre>
+                      <p className="meta-key">message.reasoning_details.text</p>
+                      <pre className="output-text">{parsedReasoningDetails}</pre>
                     </div>
                   )}
                 </div>
@@ -732,9 +845,81 @@ function App() {
         )}
 
         {activeTab === "preview" && (
-          <section className="panel-content preview-placeholder">
-            <h2>Preview</h2>
-            <p className="muted">MVP placeholder. Preview workflow is intentionally deferred.</p>
+          <section className="panel-content preview-panel">
+            {!previewChild && <p className="muted">Select a project child to preview output.</p>}
+
+            {previewChild && (
+              <>
+                <div className="preview-toolbar">
+                  <p className="muted">
+                    {previewChild.name} ({previewChild.type})
+                  </p>
+
+                  <div className="preview-controls">
+                    {previewIsSpriteSheet && (
+                      <div className="mode-toggle">
+                        <button
+                          className={`mode-toggle-button ${previewMode === "image" ? "is-active" : ""}`}
+                          onClick={() => setPreviewMode("image")}
+                          type="button"
+                        >
+                          Full image
+                        </button>
+                        <button
+                          className={`mode-toggle-button ${
+                            previewMode === "animation" ? "is-active" : ""
+                          }`}
+                          onClick={() => setPreviewMode("animation")}
+                          type="button"
+                        >
+                          Animation
+                        </button>
+                      </div>
+                    )}
+
+                    {previewIsSpriteSheet && (
+                      <label className="field field-inline preview-delay-field">
+                        <span>Frame delay (ms)</span>
+                        <input
+                          className="number-input"
+                          min={16}
+                          onChange={(event) =>
+                            setFrameDelayMs(Math.max(16, Math.floor(Number(event.target.value) || 16)))
+                          }
+                          step={10}
+                          type="number"
+                          value={frameDelayMs}
+                        />
+                      </label>
+                    )}
+                  </div>
+                </div>
+
+                <section className="preview-card preview-stage">
+                  {previewImageSrc ? (
+                    previewIsSpriteSheet && previewMode === "animation" ? (
+                      <SpriteSheetPlayer
+                        alt={`${previewChild.name} animation`}
+                        cols={previewCols}
+                        frameDelayMs={frameDelayMs}
+                        rows={previewRows}
+                        src={previewImageSrc}
+                      />
+                    ) : (
+                      <img alt={previewChild.name} className="preview-large-image" src={previewImageSrc} />
+                    )
+                  ) : (
+                    <div className="placeholder">No output image saved for this child.</div>
+                  )}
+                </section>
+
+                {previewIsSpriteSheet && (
+                  <p className="muted preview-meta">
+                    {previewRows} rows × {previewCols} cols · {previewRows * previewCols} frames
+                  </p>
+                )}
+              </>
+            )}
           </section>
         )}
       </main>
