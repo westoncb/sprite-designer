@@ -8,7 +8,7 @@ use crate::{
 };
 
 const OPENROUTER_ENDPOINT: &str = "https://openrouter.ai/api/v1/chat/completions";
-const DEFAULT_MODEL: &str = "google/gemini-3-pro-image-preview";
+const DEFAULT_MODEL: &str = "google/gemini-3.1-flash-image-preview";
 const DEFAULT_TITLE: &str = "Sprite Designer";
 
 #[derive(Debug, Clone)]
